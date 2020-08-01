@@ -1,5 +1,6 @@
 package com.example.sfcsapp.ui.cart;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
@@ -539,75 +540,77 @@ public class CartFragment extends Fragment {
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if(requestCode == REQUEST_BRAINTREE_CODE){
-            DropInResult result = data.getParcelableExtra(DropInResult.EXTRA_DROP_IN_RESULT);
-            PaymentMethodNonce nonce = result.getPaymentMethodNonce();
+            if (resultCode == Activity.RESULT_OK){
+                DropInResult result = data.getParcelableExtra(DropInResult.EXTRA_DROP_IN_RESULT);
+                PaymentMethodNonce nonce = result.getPaymentMethodNonce();
 
-            //calculate sum exit
-            cartDataSource.sumPriceInCart(Common.currentUser.getUid())
-                    .subscribeOn(Schedulers.io())
-                    .observeOn(AndroidSchedulers.mainThread())
-                    .subscribe(new SingleObserver<Double>() {
-                        @Override
-                        public void onSubscribe(Disposable d) {
+                //calculate sum exit
+                cartDataSource.sumPriceInCart(Common.currentUser.getUid())
+                        .subscribeOn(Schedulers.io())
+                        .observeOn(AndroidSchedulers.mainThread())
+                        .subscribe(new SingleObserver<Double>() {
+                            @Override
+                            public void onSubscribe(Disposable d) {
 
-                        }
+                            }
 
-                        @Override
-                        public void onSuccess(Double totalPrice) {
+                            @Override
+                            public void onSuccess(Double totalPrice) {
 
-                            //Get all item in cart to create order
-                            compositeDisposable.add(cartDataSource.getAllCart(Common.currentUser.getUid())
-                                    .subscribeOn(Schedulers.io())
-                                    .observeOn(AndroidSchedulers.mainThread())
-                                    .subscribe(cartItems -> {
+                                //Get all item in cart to create order
+                                compositeDisposable.add(cartDataSource.getAllCart(Common.currentUser.getUid())
+                                        .subscribeOn(Schedulers.io())
+                                        .observeOn(AndroidSchedulers.mainThread())
+                                        .subscribe(cartItems -> {
 
-                                        //Submit payment
-                                        compositeDisposable.add(cloudFunctions.submitPayment(totalPrice,
-                                                nonce.getNonce())
-                                                .subscribeOn(Schedulers.io())
-                                                .observeOn(AndroidSchedulers.mainThread())
-                                                .subscribe(braintreeTransaction -> {
+                                            //Submit payment
+                                            compositeDisposable.add(cloudFunctions.submitPayment(totalPrice,
+                                                    nonce.getNonce())
+                                                    .subscribeOn(Schedulers.io())
+                                                    .observeOn(AndroidSchedulers.mainThread())
+                                                    .subscribe(braintreeTransaction -> {
 
-                                                    if(braintreeTransaction.isSuccess()){
-                                                        Double finalPrice = totalPrice;
-                                                        Order order = new Order();
-                                                        order.setUserId(Common.currentUser.getUid());
-                                                        order.setUserName(Common.currentUser.getName());
-                                                        order.setUserPhone(Common.currentUser.getPhone());
-                                                        order.setShippingAddress(address);
-                                                        order.setComment(comment);
-                                                        if (currentLocation != null){
-                                                            order.setLat(currentLocation.getLatitude());
-                                                            order.setLng(currentLocation.getLongitude());
-                                                        } else {
-                                                            order.setLat(-0.1f);
-                                                            order.setLng(-0.1f);
+                                                        if(braintreeTransaction.isSuccess()){
+                                                            Double finalPrice = totalPrice;
+                                                            Order order = new Order();
+                                                            order.setUserId(Common.currentUser.getUid());
+                                                            order.setUserName(Common.currentUser.getName());
+                                                            order.setUserPhone(Common.currentUser.getPhone());
+                                                            order.setShippingAddress(address);
+                                                            order.setComment(comment);
+                                                            if (currentLocation != null){
+                                                                order.setLat(currentLocation.getLatitude());
+                                                                order.setLng(currentLocation.getLongitude());
+                                                            } else {
+                                                                order.setLat(-0.1f);
+                                                                order.setLng(-0.1f);
+                                                            }
+                                                            order.setCartItemList(cartItems);
+                                                            order.setTotalPayment(totalPrice);
+                                                            order.setDiscount(0);
+                                                            order.setFinalPayment(finalPrice);
+                                                            order.setCod(false);
+                                                            order.setTransactionId(braintreeTransaction.getTransaction().getId());
+
+                                                            writeOrderToFirebase(order);
                                                         }
-                                                        order.setCartItemList(cartItems);
-                                                        order.setTotalPayment(totalPrice);
-                                                        order.setDiscount(0);
-                                                        order.setFinalPayment(finalPrice);
-                                                        order.setCod(false);
-                                                        order.setTransactionId(braintreeTransaction.getTransaction().getId());
 
-                                                        writeOrderToFirebase(order);
-                                                    }
+                                                    }, throwable -> {
+                                                        Toast.makeText(getContext(), ""+throwable.getMessage(), Toast.LENGTH_SHORT).show();
+                                                    })
+                                            );
 
-                                                }, throwable -> {
-                                                    Toast.makeText(getContext(), ""+throwable.getMessage(), Toast.LENGTH_SHORT).show();
-                                                })
-                                        );
+                                        }, throwable -> {
+                                            Toast.makeText(getContext(), ""+throwable.getMessage(), Toast.LENGTH_SHORT).show();
+                                        }));
+                            }
 
-                                    }, throwable -> {
-                                        Toast.makeText(getContext(), ""+throwable.getMessage(), Toast.LENGTH_SHORT).show();
-                                    }));
-                        }
-
-                        @Override
-                        public void onError(Throwable e) {
-                            Toast.makeText(getContext(), ""+e.getMessage(), Toast.LENGTH_SHORT).show();
-                        }
-                    });
+                            @Override
+                            public void onError(Throwable e) {
+                                Toast.makeText(getContext(), ""+e.getMessage(), Toast.LENGTH_SHORT).show();
+                            }
+                        });
+            }
         }
     }
 }
